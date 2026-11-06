@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor Ambiental IoT</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    .card-kpi { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+    .kpi-val { font-size: 1.55rem; font-weight: 700; }
+    .sensor-tag { font-size: 0.7rem; letter-spacing: 0.5px; text-transform: uppercase; }
+    .alerta-box { border-radius: 12px; transition: all 0.3s ease; }
+    .alerta-buena { background-color: #065f46; color: #34d399; border: 1px solid #059669; }
+    .alerta-moderada { background-color: #854d0e; color: #fde047; border: 1px solid #ca8a04; }
+    .alerta-peligro { background-color: #991b1b; color: #fca5a5; border: 1px solid #dc2626; }
+    .table-dark { background-color: #1e293b; --bs-table-bg: #1e293b; border-color: #334155; }
+    .fecha-col { white-space: nowrap !important; }
+    
+    .divisor-hora-fila {
+      background: rgba(2, 132, 199, 0.15) !important;
+      border-left: 4px solid #38bdf8 !important;
+      font-weight: 600;
+      color: #38bdf8 !important;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tabs-graficas-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 100%;
+    }
+    .btn-tab {
+      background-color: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      font-size: 0.75rem;
+      padding: 5px 12px;
+      border-radius: 8px;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+    }
+    .btn-tab.active {
+      background-color: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="p-3 p-md-4">
+  <div class="container-fluid max-w-6xl">
+    <!-- Barra superior -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary gap-2">
+      <div>
+        <h2 class="h4 mb-1">🍃 Monitor Ambiental - Sistema IoT</h2>
+        <span class="badge bg-success">● Servidor Raspberry Pi 4 (En línea)</span>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <select id="filtroDispositivo" class="form-select form-select-sm bg-dark text-light border-secondary" style="width: auto;" onchange="actualizarDashboard()">
+          <option value="">Todos los Nodos</option>
+        </select>
+        <a href="/api/exportar-excel" class="btn btn-success btn-sm font-monospace">📊 Excel</a>
+        <a href="/api/exportar-pdf" class="btn btn-outline-danger btn-sm font-monospace">📄 PDF</a>
+      </div>
+    </div>
+
+    <!-- Casilla de Alertas Multivariable -->
+    <div id="boxAlerta" class="p-3 mb-4 alerta-box alerta-buena d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h5 class="mb-1" id="txtAlertaTitulo">Condiciones: Evaluando...</h5>
+        <small id="txtAlertaDetalle">Analizando parámetros de confort térmico y partículas en suspensión.</small>
+      </div>
+      <span class="badge bg-dark fs-6" id="badgeCausa">Diagnóstico OK</span>
+    </div>
+
+    <!-- 5 Tarjetas KPI -->
+    <div class="row row-cols-2 row-cols-md-5 g-3 mb-4">
+      <div class="col">
+        <div class="card card-kpi p-3 text-center h-100">
+          <span class="sensor-tag text-secondary">AHT20 / BMP280</span>
+          <small class="text-secondary d-block mb-1">Temperatura</small>
+          <div class="kpi-val text-warning" id="valTemp">-- °C</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-kpi p-3 text-center h-100">
+          <span class="sensor-tag text-secondary">AHT20</span>
+          <small class="text-secondary d-block mb-1">Humedad</small>
+          <div class="kpi-val text-info" id="valHum">-- %</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-kpi p-3 text-center h-100">
+          <span class="sensor-tag text-secondary">BMP280</span>
+          <small class="text-secondary d-block mb-1">Presión Atmosférica</small>
+          <div class="kpi-val" style="color: #60a5fa;" id="valPresion">-- hPa</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-kpi p-3 text-center h-100">
+          <span class="sensor-tag text-secondary">PMS5003</span>
+          <small class="text-secondary d-block mb-1">PM 2.5 (Fino)</small>
+          <div class="kpi-val text-success" id="valPM25">-- µg/m³</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card card-kpi p-3 text-center h-100">
+          <span class="sensor-tag text-secondary">PMS5003</span>
+          <small class="text-secondary d-block mb-1">PM 10 (Grueso)</small>
+          <div class="kpi-val" style="color: #c084fc;" id="valPM10">-- µg/m³</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contenedor de Gráficas -->
+    <div class="card card-kpi p-3 mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <h6 class="mb-0 text-info">📈 Tendencia en Tiempo Real</h6>
+          <span class="badge bg-dark border border-secondary text-info font-monospace" id="badgeBloqueHorario">🕒 Bloque: --:-- hrs</span>
+        </div>
+        <div class="tabs-graficas-container">
+          <button type="button" class="btn btn-tab active" onclick="cambiarVistaGrafica('general', this)">🌐 General</button>
+          <button type="button" class="btn btn-tab" onclick="cambiarVistaGrafica('temp', this)">🌡️ Temp</button>
+          <button type="button" class="btn btn-tab" onclick="cambiarVistaGrafica('hum', this)">💧 Hum</button>
+          <button type="button" class="btn btn-tab" onclick="cambiarVistaGrafica('presion', this)">⏱️ Presión</button>
+          <button type="button" class="btn btn-tab" onclick="cambiarVistaGrafica('particulas', this)">🌫️ Partículas</button>
+        </div>
+      </div>
+      <div style="position: relative; height: 320px;">
+        <canvas id="graficaAire"></canvas>
+      </div>
+    </div>
+
+    <!-- Tabla con separadores de hora -->
+    <div class="card card-kpi p-3">
+      <h6 class="mb-3 text-secondary">📋 Historial de Mediciones Ambientales</h6>
+      <div class="table-responsive">
+        <table class="table table-dark table-hover table-sm mb-0">
+          <thead>
+            <tr class="text-secondary">
+              <th>Fecha</th>
+              <th>Tiempo</th>
+              <th>Nodo</th>
+              <th>Temp</th>
+              <th>Humedad</th>
+              <th>Presión</th>
+              <th>PM 2.5</th>
+              <th>PM 10</th>
+            </tr>
+          </thead>
+          <tbody id="tablaCuerpo"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let chartInstancia = null;
+    let datosCacheados = [];
+    let vistaActual = 'general';
+    let seleccionUsuarioGeneral = { 0: true, 1: true, 2: true, 3: true, 4: true };
+
+    function inicializarGrafica() {
+      const ctx = document.getElementById('graficaAire').getContext('2d');
+      chartInstancia = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            { label: 'Temperatura (°C)', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.35, yAxisID: 'yClima' },
+            { label: 'Humedad (%)', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', tension: 0.35, yAxisID: 'yClima' },
+            { label: 'Presión (hPa)', data: [], borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.1)', tension: 0.35, yAxisID: 'yPresion' },
+            { label: 'PM 2.5 (µg/m³)', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.1)', tension: 0.35, yAxisID: 'yParticulas' },
+            { label: 'PM 10 (µg/m³)', data: [], borderColor: '#c084fc', backgroundColor: 'rgba(192,132,252,0.1)', tension: 0.35, yAxisID: 'yParticulas' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: {
+            duration: 650,
+            easing: 'easeOutQuart'
+          },
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { 
+              ticks: { 
+                color: function(context) {
+                  const label = context.chart.data.labels[context.index];
+                  // Si es el inicio de una hora nueva, la etiqueta se pinta de azul cielo brillante
+                  return Array.isArray(label) ? '#38bdf8' : '#94a3b8';
+                },
+                font: function(context) {
+                  const label = context.chart.data.labels[context.index];
+                  return Array.isArray(label) ? { weight: 'bold', size: 11 } : { size: 10 };
+                },
+                autoSkip: true,
+                maxTicksLimit: 12
+              }, 
+              grid: { 
+                color: function(context) {
+                  const label = context.chart.data.labels[context.index];
+                  // Línea vertical brillante que resalta en la cuadrícula al iniciar una hora
+                  return Array.isArray(label) ? '#38bdf8' : '#334155';
+                },
+                lineWidth: function(context) {
+                  const label = context.chart.data.labels[context.index];
+                  return Array.isArray(label) ? 2 : 1;
+                }
+              } 
+            },
+            yClima: { 
+              type: 'linear', 
+              position: 'left', 
+              title: { display: true, text: 'Clima (°C / %)', color: '#f59e0b' },
+              ticks: { color: '#94a3b8' }, 
+              grid: { color: '#334155' } 
+            },
+            yParticulas: { 
+              type: 'linear', 
+              position: 'right', 
+              title: { display: true, text: 'Partículas (µg/m³)', color: '#34d399' },
+              ticks: { color: '#34d399' }, 
+              grid: { drawOnChartArea: false } 
+            },
+            yPresion: {
+              type: 'linear',
+              position: 'right',
+              display: false,
+              title: { display: true, text: 'Presión (hPa)', color: '#60a5fa' },
+              ticks: { color: '#60a5fa' },
+              grid: { drawOnChartArea: false }
+            }
+          },
+          plugins: { 
+            legend: { 
+              display: true,
+              labels: { color: '#cbd5e1', boxWidth: 12 },
+              onClick: function(e, legendItem, legend) {
+                if (vistaActual === 'general') {
+                  const ci = legend.chart;
+                  const idx = legendItem.datasetIndex;
+                  const vis = !ci.isDatasetVisible(idx);
+                  ci.setDatasetVisibility(idx, vis);
+                  seleccionUsuarioGeneral[idx] = vis;
+                  ci.update();
+                }
+              }
+            } 
+          }
+        }
+      });
+    }
+
+    function cambiarVistaGrafica(tipo, btn) {
+      vistaActual = tipo;
+      document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      aplicarVisibilidadPorPestana();
+      chartInstancia.update();
+    }
+
+    function aplicarVisibilidadPorPestana() {
+      const opts = chartInstancia.options;
+      const dsets = chartInstancia.data.datasets;
+
+      if (vistaActual === 'general') {
+        opts.plugins.legend.display = true;
+        opts.scales.yClima.display = true;
+        opts.scales.yParticulas.display = true;
+        opts.scales.yPresion.display = false;
+        dsets.forEach((d, i) => {
+          d.hidden = !seleccionUsuarioGeneral[i];
+        });
+      } else {
+        opts.plugins.legend.display = false;
+        if (vistaActual === 'temp') {
+          opts.scales.yClima.display = true;
+          opts.scales.yParticulas.display = false;
+          opts.scales.yPresion.display = false;
+          dsets.forEach((d, i) => d.hidden = (i !== 0));
+        } else if (vistaActual === 'hum') {
+          opts.scales.yClima.display = true;
+          opts.scales.yParticulas.display = false;
+          opts.scales.yPresion.display = false;
+          dsets.forEach((d, i) => d.hidden = (i !== 1));
+        } else if (vistaActual === 'presion') {
+          opts.scales.yClima.display = false;
+          opts.scales.yParticulas.display = false;
+          opts.scales.yPresion.display = true;
+          dsets.forEach((d, i) => d.hidden = (i !== 2));
+        } else if (vistaActual === 'particulas') {
+          opts.scales.yClima.display = false;
+          opts.scales.yParticulas.display = true;
+          opts.scales.yPresion.display = false;
+          dsets.forEach((d, i) => d.hidden = !(i === 3 || i === 4));
+        }
+      }
+    }
+
+    function actualizarGraficaSuave() {
+      if (!datosCacheados.length) return;
+      const cronologico = [...datosCacheados].reverse();
+
+      let ultimaHora = null;
+      let bloqueActual = '--:--';
+
+      // Procesa las etiquetas del eje X: solo minutos y segundos (MM:SS)
+      chartInstancia.data.labels = cronologico.map((d) => {
+        if (!d.fecha_hora) return '--:--';
+        const partes = d.fecha_hora.split(' ');
+        const horaComp = partes[1] || '';
+        if (!horaComp) return '--:--';
+
+        const [hh, mm, ss] = horaComp.split(':');
+        const minSeg = `${mm}:${ss}`; // Solo minutos y segundos limpios
+        bloqueActual = `${hh}:00 hrs`;
+
+        // Si cambia la hora, devolvemos un array para que Chart.js resalte la hora
+        if (ultimaHora !== null && hh !== ultimaHora) {
+          ultimaHora = hh;
+          return [minSeg, `🕒 ${hh}:00 hrs`];
+        }
+
+        ultimaHora = hh;
+        return minSeg;
+      });
+
+      // Actualiza la insignia del bloque horario activo
+      document.getElementById('badgeBloqueHorario').innerText = `🕒 Bloque: ${bloqueActual}`;
+
+      // Inyección suave de los datos
+      chartInstancia.data.datasets[0].data = cronologico.map(d => d.temperatura);
+      chartInstancia.data.datasets[1].data = cronologico.map(d => d.humedad);
+      chartInstancia.data.datasets[2].data = cronologico.map(d => d.presion);
+      chartInstancia.data.datasets[3].data = cronologico.map(d => d.pm25);
+      chartInstancia.data.datasets[4].data = cronologico.map(d => d.pm10);
+
+      aplicarVisibilidadPorPestana();
+      chartInstancia.update();
+    }
+
+    async function cargarDispositivos() {
+      try {
+        const res = await fetch('/api/dispositivos');
+        const lista = await res.json();
+        const sel = document.getElementById('filtroDispositivo');
+        const val = sel.value;
+        sel.innerHTML = '<option value="">Todos los Nodos</option>';
+        lista.forEach(d => {
+          sel.innerHTML += `<option value="${d.id}">${d.id} (${d.nombre || 'Prototipo'})</option>`;
+        });
+        sel.value = val;
+      } catch (e) { console.error(e); }
+    }
+
+    async function actualizarDashboard() {
+      try {
+        const devId = document.getElementById('filtroDispositivo').value;
+        const url = devId ? `/api/mediciones?dispositivo_id=${devId}&limite=50` : '/api/mediciones?limite=50';
+        const respuesta = await fetch(url);
+        datosCacheados = await respuesta.json();
+        if (!datosCacheados.length) return;
+
+        // 1. Tarjetas KPI
+        const actual = datosCacheados[0];
+        document.getElementById('valTemp').innerText = actual.temperatura !== null ? `${actual.temperatura} °C` : '--';
+        document.getElementById('valHum').innerText = actual.humedad !== null ? `${actual.humedad} %` : '--';
+        document.getElementById('valPresion').innerText = actual.presion !== null ? `${actual.presion} hPa` : '--';
+        document.getElementById('valPM25').innerText = actual.pm25 !== null ? `${actual.pm25} µg/m³` : '--';
+        document.getElementById('valPM10').innerText = actual.pm10 !== null ? `${actual.pm10} µg/m³` : '--';
+
+        // 2. Alerta Multivariable
+        const box = document.getElementById('boxAlerta');
+        const tit = document.getElementById('txtAlertaTitulo');
+        const det = document.getElementById('txtAlertaDetalle');
+        const badge = document.getElementById('badgeCausa');
+
+        const t = actual.temperatura ?? 22;
+        const h = actual.humedad ?? 50;
+        const p25 = actual.pm25 ?? 0;
+        const p10 = actual.pm10 ?? 0;
+
+        box.className = 'p-3 mb-4 alerta-box d-flex flex-wrap justify-content-between align-items-center gap-2 ';
+
+        if (t >= 38 || p25 > 35 || p10 > 75) {
+          box.classList.add('alerta-peligro');
+          tit.innerText = '🚨 ALERTA CRÍTICA: Condiciones Peligrosas';
+          badge.innerText = t >= 38 ? `Calor Extremo: ${t}°C` : `Polución Severa: ${p25} µg/m³`;
+          det.innerText = t >= 38 
+            ? `Peligro térmico detectado (${t} °C). Se recomienda activar ventilación mecánica inmediata.` 
+            : `Concentración dañina de partículas suspendidas. Riesgo para la salud respiratoria.`;
+        } else if (t >= 30 || h < 30 || h > 75 || p25 > 12 || p10 > 50) {
+          box.classList.add('alerta-moderada');
+          tit.innerText = '⚠️ PRECAUCIÓN: Variables Fuera de Confort';
+          badge.innerText = t >= 30 ? `Calor: ${t}°C` : (h < 30 ? `Aire Seco: ${h}%` : `PM2.5: ${p25}`);
+          det.innerText = t >= 30 
+            ? `Temperatura elevada (${t} °C). Ventilar área de trabajo.`
+            : (h < 30 ? `Humedad muy baja (${h}%). Ambiente seco propenso a irritación.` : `Nivel de partículas moderado.`);
+        } else {
+          box.classList.add('alerta-buena');
+          tit.innerText = '✅ CONDICIONES ÓPTIMAS: Ambiente Seguro';
+          badge.innerText = 'Calidad Buena';
+          det.innerText = `Temperatura (${t} °C), humedad (${h}%) y pureza del aire dentro de rangos normales.`;
+        }
+
+        // 3. Actualizar gráfica
+        actualizarGraficaSuave();
+
+        // 4. Tabla con divisores de hora
+        const tabla = document.getElementById('tablaCuerpo');
+        tabla.innerHTML = '';
+        let ultimaHoraRegistrada = null;
+
+        datosCacheados.forEach(d => {
+          let fechaCorta = '--';
+          let horaMinSeg = '--';
+          let bloqueHora = '';
+
+          if (d.fecha_hora) {
+            const partes = d.fecha_hora.split(' ');
+            const horaCompleta = partes[1] || '';
+            if (partes[0]) {
+              const [y, m, dia] = partes[0].split('-');
+              fechaCorta = `${dia}/${m}/${y.slice(2)}`;
+            }
+            if (horaCompleta) {
+              const [hh, mm, ss] = horaCompleta.split(':');
+              bloqueHora = `${hh}:00 hrs`;
+              horaMinSeg = `+${mm}:${ss}`;
+            }
+          }
+
+          if (bloqueHora && bloqueHora !== ultimaHoraRegistrada) {
+            tabla.innerHTML += `
+              <tr>
+                <td colspan="8" class="divisor-hora-fila py-2 px-3">
+                  🕒 Bloque Horario: ${bloqueHora} — (${fechaCorta})
+                </td>
+              </tr>
+            `;
+            ultimaHoraRegistrada = bloqueHora;
+          }
+
+          tabla.innerHTML += `
+            <tr>
+              <td class="fecha-col text-light">${fechaCorta}</td>
+              <td class="fecha-col text-info font-monospace">${horaMinSeg}</td>
+              <td><span class="badge bg-secondary">${d.dispositivo_id}</span></td>
+              <td class="text-warning">${d.temperatura ?? '--'} °C</td>
+              <td class="text-info">${d.humedad ?? '--'} %</td>
+              <td style="color: #60a5fa;">${d.presion ?? '--'}</td>
+              <td class="text-success">${d.pm25 ?? '--'}</td>
+              <td style="color: #c084fc;">${d.pm10 ?? '--'}</td>
+            </tr>
+          `;
+        });
+      } catch (err) { console.error(err); }
+    }
+
+    inicializarGrafica();
+    cargarDispositivos();
+    actualizarDashboard();
+    setInterval(actualizarDashboard, 30000);
+  </script>
+</body>
+</html>
